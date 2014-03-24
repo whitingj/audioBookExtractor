@@ -4,7 +4,7 @@ import os, sys, subprocess, argparse, time
 
 parser = argparse.ArgumentParser(description='Audiobook Extractor.', epilog='Range or disc must be present.')
 parser.add_argument('-c', '--cdopt', help="cdda2wav options. For example -c '-S 24' to run cdda2wav cd reading at 24x speed.")
-parser.add_argument('-auto', '--auto', action='store_true', help="If present it will automatically open the cd tray and immediately begin trying to rip the next disk waiting for a cd to be put in the drive.")
+parser.add_argument('-auto', '--auto', action='store_true', help="If present it will automatically open the cd tray and immediately begin trying to rip the next disk waiting for a cd to be put in the drive.", default=True)
 parser.add_argument('-r', '--range', nargs=2, type=int, help='The start and ending disc numbers.')
 parser.add_argument('-d', '--disc', type=int, help='disc number.')
 parser.add_argument('-a', '--artist', help='artist name')
@@ -90,6 +90,8 @@ def getIDForCD(cdDevice):
 	#Get the disc id
 	os.system("diskutil umountDisk "+cdDevice)
 	info = subprocess.check_output(["cdda2wav","-D", "IODVDServices", "-J", "-g", "-v", "toc"], stderr=subprocess.STDOUT).split("\n")
+	#clean up the files created by cdda2wav
+	os.system('rm -f *.inf standard_output.cd* audio.cdtext');
 
 	cdDevice = None
 	lastDevice = None
@@ -126,7 +128,7 @@ for disc in range(disc_start, disc_end+1):
 
 	reader = 'cdda2wav'
 	#reader = 'cdparanoia'
-	title = album+" - Disc "+str(disc);
+	title = album + (" - Disc %02d" % disc);
 	output_file = title+".mp3"
 	if (output_dir != None):
 		output_file = output_dir + '/' + output_file
