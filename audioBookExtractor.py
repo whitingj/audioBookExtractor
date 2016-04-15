@@ -2,9 +2,12 @@
 
 import os, sys, subprocess, argparse, time
 
+def escape(str):
+	return str.replace("'","'\\''")
+
 parser = argparse.ArgumentParser(description='Audiobook Extractor.', epilog='Range or disc must be present.')
 parser.add_argument('-c', '--cdopt', help="cdda2wav options. For example -c '-S 24' to run cdda2wav cd reading at 24x speed.")
-parser.add_argument('-auto', '--auto', action='store_true', help="If present it will automatically open the cd tray and immediately begin trying to rip the next disk waiting for a cd to be put in the drive.", default=True)
+parser.add_argument('-noauto', '--noauto', action='store_true', help="If present it will disable the automatic opening of the cd tray and automatic reipping of the data.", default=False)
 parser.add_argument('-r', '--range', nargs=2, type=int, help='The start and ending disc numbers.')
 parser.add_argument('-d', '--disc', type=int, help='disc number.')
 parser.add_argument('-a', '--artist', help='artist name')
@@ -19,11 +22,11 @@ os.unsetenv("DYLD_LIBRARY_PATH")
 
 #check if we have a cdda2wav options
 if (args['cdopt'] != None):
-	cdda2wavOptions = args['cdopt'] 
+	cdda2wavOptions = args['cdopt']
 else:
 	cdda2wavOptions = ''
 
-album = args['album'] 
+album = args['album']
 
 if (args['directory'] != None):
 	output_dir = args['directory']
@@ -31,12 +34,12 @@ else:
 	output_dir = album
 
 print "output_dir: "+str(output_dir)
-os.system("mkdir -p '"+output_dir+"'") 
+os.system("mkdir -p '"+escape(output_dir)+"'")
 
 artist = args['artist']
 
 if (args['range'] != None):
-	disc_start = args['range'][0] 
+	disc_start = args['range'][0]
 	disc_end = args['range'][1]
 elif (args['disc'] != None):
 	disc_start = args['disc']
@@ -46,7 +49,7 @@ else:
 	print "Missing range or disc argument."
 	sys.exit(1)
 
-auto = args["auto"] != None
+auto = args["noauto"] != True
 
 #check to see if we have lame and cdda2wav
 lame_check = os.system('which -s lame')
@@ -97,7 +100,7 @@ def getIDForCD(cdDevice):
 	lastDevice = None
 	for line in info:
 		if (line.startswith("CDINDEX discid:")):
-			return line[16:]			
+			return line[16:]
 
 def waitForCD(max_tries = 1000, exit = True):
 	print "Waiting for disc...",
@@ -107,8 +110,9 @@ def waitForCD(max_tries = 1000, exit = True):
 		cdDevice = checkForCD()
 		if (cdDevice != None):
 			print ''
+			time.sleep(3) #we found the device wait a few seconds to make sure everything is initialized before we move on.
 			return cdDevice
-		time.sleep(1)
+		time.sleep(3)
 		print str(i),
 		sys.stdout.flush()
 
@@ -138,11 +142,11 @@ for disc in range(disc_start, disc_end+1):
 	print ""
 
 	if (artist != None):
-		lameArtist = "--ta '"+str(artist)+"'"
+		lameArtist = "--ta '"+escape(str(artist))+"'"
 	else:
 		lameArtist = ''
 
-	lameCmd = "lame --cbr -h -b 64 -m m --tn "+str(disc)+" --tl '"+album+"' --tt '"+title+"' "+lameArtist+"  - '"+output_file+"'"
+	lameCmd = "lame --cbr -h -b 96 -m m --tn "+str(disc)+" --tl '"+escape(album)+"' --tt '"+escape(title)+"' "+lameArtist+"  - '"+escape(output_file)+"'"
 
 	discReady = False
 	while (discReady == False):
@@ -166,9 +170,9 @@ for disc in range(disc_start, disc_end+1):
 				ejectDisc()
 		else:
 			discReady = True
-	
+
 	previousDiscs[discID] = disc
-	
+
 	print "Ripping from device: "+cdDevice
 
 	#os.system("growlnotify -t 'Start ripping.' -m 'Starting: "+title+"'")
@@ -176,16 +180,22 @@ for disc in range(disc_start, disc_end+1):
 	commands = []
 	if reader == 'cdda2wav':
 		commands.append("diskutil umountDisk "+cdDevice)
-		commands.append("cdda2wav -D IODVDServices "+cdda2wavOptions+" -t all - | "+lameCmd)
+
+		#-t all used to work but no longer does in newer versions. I now do a -B, that despite cdda2wav complaining about works perfectly and outputs all tracks to stdout.
+		commands.append("cdda2wav -D IODVDServices "+cdda2wavOptions+" -B - | "+lameCmd)
+
 	elif reader == 'cdparanoia':
 		commands.append("cdparanoia -w '1-' - | "+lameCmd)
 
 	for cmd in commands:
 		print cmd
-		os.system(cmd) 
+		os.system(cmd)
 
 	if (args['sound'] != None):
 		os.system("afplay "+args['sound'])
+
+	#try waiting 3 seconds to see if this prevents our problem where the cd will no longer work until a reboot
+	time.sleep(3)
 
 	ejectDisc()
 
