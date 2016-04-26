@@ -17,6 +17,9 @@ parser.add_argument('album', help='album name')
 
 args = vars(parser.parse_args())
 
+#sleep time in between checking for a disk
+SLEEP_TIME = 4
+
 #clear our env variables that causes diskutil to complain
 os.unsetenv("DYLD_LIBRARY_PATH")
 
@@ -106,13 +109,13 @@ def waitForCD(max_tries = 1000, exit = True):
 	print "Waiting for disc...",
 	sys.stdout.flush()
 
-	for i in range(1, max_tries+1):
+	for i in range(1, max_tries + 1):
 		cdDevice = checkForCD()
 		if (cdDevice != None):
 			print ''
-			time.sleep(3) #we found the device wait a few seconds to make sure everything is initialized before we move on.
+			time.sleep(SLEEP_TIME) #we found the device wait a few seconds to make sure everything is initialized before we move on.
 			return cdDevice
-		time.sleep(3)
+		time.sleep(SLEEP_TIME)
 		print str(i),
 		sys.stdout.flush()
 
@@ -127,9 +130,9 @@ def ejectDisc():
 	os.system("drutil eject")
 
 previousDiscs = {}
-
+discs_processed = 0
 for disc in range(disc_start, disc_end+1):
-
+	discs_processed += 1
 	reader = 'cdda2wav'
 	#reader = 'cdparanoia'
 	title = album + (" - Disc %02d" % disc);
@@ -156,7 +159,17 @@ for disc in range(disc_start, disc_end+1):
 		else:
 			cdDevice = False
 			while cdDevice == False:
-				cdDevice = waitForCD(exit = False)
+				if discs_processed == 1:
+					#if we are on our first disc and there is no cd present then eject the tray
+					cdDevice = waitForCD(max_tries = 1, exit = False)
+					if not cdDevice:
+						print ""
+						print "Ejecting tray..."
+						#no cd present, eject
+						ejectDisc()
+						cdDevice = waitForCD(exit = False)
+				else:
+					cdDevice = waitForCD(exit = False)
 
 		discID = getIDForCD(cdDevice)
 		print "discid: "+str(discID)
@@ -181,7 +194,7 @@ for disc in range(disc_start, disc_end+1):
 	if reader == 'cdda2wav':
 		commands.append("diskutil umountDisk "+cdDevice)
 
-		#-t all used to work but no longer does in newer versions. I now do a -B, that despite cdda2wav complaining about works perfectly and outputs all tracks to stdout.
+		#-t all used to work but no longer does in newer versions. I now do a -B, that despite cdda2wav complaining, it works perfectly and outputs all tracks to stdout.
 		commands.append("cdda2wav -D IODVDServices "+cdda2wavOptions+" -B - | "+lameCmd)
 
 	elif reader == 'cdparanoia':
@@ -194,8 +207,8 @@ for disc in range(disc_start, disc_end+1):
 	if (args['sound'] != None):
 		os.system("afplay "+args['sound'])
 
-	#try waiting 3 seconds to see if this prevents our problem where the cd will no longer work until a reboot
-	time.sleep(3)
+	#try waiting a few seconds to see if this prevents our problem where the cd will no longer work until a reboot
+	time.sleep(SLEEP_TIME)
 
 	ejectDisc()
 
